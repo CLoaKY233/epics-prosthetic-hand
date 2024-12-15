@@ -6,6 +6,12 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
+bool overrideMode = false;
+
+
+
+
+
 // ==================== Number of EMG Sensors ====================
 #define NUM_SENSORS 2
 
@@ -75,14 +81,14 @@ void onTick() {
     newData = true;
 }
 
-
 uint8_t receiverMacAddress[] = {0x54, 0x32, 0x04, 0x21, 0x7A, 0xFC}; // Example MAC Address
 
-// Structure to send data
 typedef struct struct_message {
-    char command;          // 'm' for message, 'v' for vibration
-    bool Vibrate;          // Indicates if vibration is needed
-    char message[100];     // Message to display
+    char command;          // 'm' for message, 'v' for vibration, 'o' for override, 's' for stop
+    bool Vibrate;
+    char message[100];
+    int motorNumber;       // Motor number (1,2,3)
+    int angle;            // Angle for motor
 } struct_message;
 
 struct_message myData;
@@ -91,6 +97,40 @@ struct_message myData;
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     Serial.print("\r\nLast Packet Send Status:\t");
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+}
+
+
+
+void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len) {
+    if (len == sizeof(struct_message)) {
+        struct_message* msg = (struct_message*)incomingData;
+
+        if (msg->command == 'o') {  // Override command
+            overrideMode = true;
+            // Set motor angle based on received command
+            switch(msg->motorNumber) {
+                case 1:
+                    setMotorAngle(INDEX_MIDDLE, msg->angle);
+                    break;
+                case 2:
+                    setMotorAngle(THUMB, msg->angle);
+                    break;
+                case 3:
+                    setMotorAngle(RING_PINKY, msg->angle);
+                    break;
+            }
+            Serial.printf("Override: Motor %d set to %d degrees\n",
+                         msg->motorNumber, msg->angle);
+        }
+        else if (msg->command == 's') {  // Stop command
+            overrideMode = false;
+            // Reset all motors to initial position
+            setMotorAngle(INDEX_MIDDLE, INDEX_MIDDLE_INITIAL);
+            setMotorAngle(RING_PINKY, RING_PINKY_INITIAL);
+            setMotorAngle(THUMB, THUMB_INITIAL);
+            Serial.println("Override stopped, returning to EMG control");
+        }
+    }
 }
 
 
@@ -181,6 +221,7 @@ void setup() {
 
     // Register send callback
     esp_now_register_send_cb(OnDataSent);
+    esp_now_register_recv_cb(OnDataRecv);
 
     // Register peer
     esp_now_peer_info_t peerInfo;
@@ -194,7 +235,7 @@ void setup() {
         return;
     }
 
-    
+
 
 
         // ==================== Calibration ====================
@@ -205,9 +246,9 @@ void setup() {
     calibrateEMG();
 
     sendMessage(true, "calibration complete");
-    
 
-    
+
+
     Serial.println("Calibration complete.");
     delay(1000);
     sendMessage(true, "Calibration complete.");
@@ -215,6 +256,14 @@ void setup() {
 }
 
 void loop() {
+
+
+
+if (overrideMode) {
+        // In override mode, only process ESP-NOW messages
+        delay(10);
+        return;
+    }
     if (newData) {
         newData = false;
 
@@ -279,7 +328,7 @@ void loop() {
                         if (currentTime - lastStateChangeTime[i] > stateChangeDelay) {
                             currentState[i] = IDLE;
                             digitalWrite(ledPins[i], LOW);
-                            
+
                             // Return to initial positions
                             if (i == 0) {
                                 setMotorAngle(INDEX_MIDDLE, INDEX_MIDDLE_INITIAL);
@@ -357,7 +406,7 @@ void calibrateEMG() {
         Serial.print("Sensor ");
         Serial.print(i);
         Serial.println(" Calibration complete.");
-        
+
         Serial.print("Rest Level: ");
         Serial.println(restLevel[i]);
         Serial.print("Active Level: ");
