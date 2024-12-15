@@ -3,121 +3,145 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <VibrationMotor.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
 
-// ==================== I2C Pin Definitions ====================
 #define OLED_SDA 23
 #define OLED_SCL 19
+#define MOTOR_PIN 18
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
 
-// ==================== OLED Display Parameters ====================
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
-// ==================== OLED Display Initialization ====================
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+BLEServer* pServer = NULL;
+BLECharacteristic* pCharacteristic = NULL;
+bool deviceConnected = false;
 
-// ==================== Vibration Motor Setup ====================
-const int motorPin = 18; // Adjust the pin as per your wiring
-VibrationMotor myVibrationMotor(motorPin);
-
-// ==================== ESP-NOW Message Structure ====================
+// Message structure for ESP-NOW
 typedef struct struct_message {
-    char command;          // 'm' for message, 'v' for vibration
-    bool Vibrate;          // Indicates if vibration is needed
-    char message[100];     // Message to display
+    char command;
+    bool Vibrate;
+    char message[100];
 } struct_message;
 
-// Instantiate a structure to hold incoming data
 struct_message myData;
 
-// ==================== ESP-NOW Callback Function ====================
-// Note: Ensure the callback signature matches the ESP32-C6 expectations
-void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len) {
-    if (len < sizeof(struct_message)) {
-        Serial.println("Received incomplete data");
-        return;
+// Function to update display
+void updateDisplay(const char* msg) {
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setCursor(0,20);
+    display.println(msg);
+    display.display();
+}
+
+// Function to trigger vibration
+void vibrate(int duration) {
+    digitalWrite(MOTOR_PIN, HIGH);
+    delay(duration);
+    digitalWrite(MOTOR_PIN, LOW);
+}
+
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+        deviceConnected = true;
+        Serial.println("BLE Connected");
+        updateDisplay("Connected");
     }
 
-    // Copy the incoming data into the myData structure
-    memcpy(&myData, incomingData, sizeof(myData));
+    void onDisconnect(BLEServer* pServer) {
+        deviceConnected = false;
+        Serial.println("BLE Disconnected");
+        updateDisplay("Waiting..");
+        BLEDevice::startAdvertising();
+    }
+};
 
-    // Handle vibration command
-    if (myData.command == 'v') {
-        Serial.println("Vibrating motor");
-        myVibrationMotor.pulse(2); // Pulse duration in milliseconds
-    } 
-    // Handle message command
-    else if (myData.command == 'm') {
-        Serial.print("Received message: ");
-        Serial.println(myData.message);
+class MyCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+        uint8_t* data = pCharacteristic->getData();
+        size_t len = pCharacteristic->getLength();
 
-        // Display the message on the OLED
-        display.clearDisplay();
-        display.setTextSize(1); // Normal 1:1 pixel scale
-        display.setTextColor(SSD1306_WHITE);
-        display.setCursor(0, 0); // Start at top-left corner
-        display.println(myData.message);
-        display.display();
+        if (len > 0) {
+            char msgBuffer[100] = {0};
+            size_t copyLen = std::min(len, sizeof(msgBuffer) - 1);
+            memcpy(msgBuffer, data, copyLen);
+            
+            Serial.printf("BLE Received: %s\n", msgBuffer);
+            updateDisplay(msgBuffer);
+            vibrate(100);
+        }
+    }
+};
 
-        // Trigger vibration if requested
-        if (myData.Vibrate) {
-            Serial.println("Vibrating motor due to message");
-            myVibrationMotor.pulse(2); // Pulse duration in milliseconds
+void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len) {
+    if (len == sizeof(struct_message)) {
+        memcpy(&myData, incomingData, sizeof(myData));
+        
+        if (myData.command == 'v') {
+            Serial.println("ESP-NOW: Vibrate command");
+            vibrate(200);
+        }
+        else if (myData.command == 'm') {
+            Serial.printf("ESP-NOW Message: %s\n", myData.message);
+            updateDisplay(myData.message);
+            if (myData.Vibrate) vibrate(100);
         }
     }
 }
 
 void setup() {
-    // Initialize Serial Communication
     Serial.begin(115200);
-    
-    Serial.println("ESP32-C6 Receiver Starting...");
+    Serial.println("Starting...");
 
-    // Initialize I2C with specified pins
+    // Initialize Motor
+    pinMode(MOTOR_PIN, OUTPUT);
+    digitalWrite(MOTOR_PIN, LOW);
+
+    // Initialize I2C and OLED
     Wire.begin(OLED_SDA, OLED_SCL);
-
-    // Initialize the OLED display
-    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // 0x3C is a common OLED I2C address
-        Serial.println(F("SSD1306 allocation failed"));
-        for (;;); // Don't proceed, loop forever
-    }
-
-    // Optionally, rotate the display if needed
-    // display.setRotation(2); // 0: default, 1: 90deg, 2: 180deg, 3: 270deg
-
-    display.clearDisplay();
-    display.display();
-
-    // Set device as a Wi-Fi Station
-    WiFi.mode(WIFI_STA);
-    Serial.println("Wi-Fi Initialized as Station.");
-
-    // Init ESP-NOW
-    if (esp_now_init() != ESP_OK) {
-        Serial.println("Error initializing ESP-NOW");
+    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+        Serial.println("SSD1306 failed");
         return;
     }
-    Serial.println("ESP-NOW Initialized.");
-
-    // Register the receive callback function
-    esp_now_register_recv_cb(OnDataRecv);
-    Serial.println("Receive Callback Registered.");
-
-    // Initialize the vibration motor
-    // Assuming VibrationMotor library handles initialization in its constructor
-    // If not, uncomment the following lines:
-    // pinMode(motorPin, OUTPUT);
-    // digitalWrite(motorPin, LOW);
-
-    // Display startup message on OLED
-    display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-    display.println("ESP32-C6 Ready");
-    display.display();
-    Serial.println("Display Updated: ESP32-C6 Ready");
+
+    // Initialize WiFi for ESP-NOW
+    WiFi.mode(WIFI_STA);
+    if (esp_now_init() != ESP_OK) {
+        Serial.println("ESP-NOW failed");
+        return;
+    }
+    esp_now_register_recv_cb(OnDataRecv);
+
+    // Initialize BLE
+    BLEDevice::init("ESP32-C6");
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
+
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+    pCharacteristic = pService->createCharacteristic(
+                        CHARACTERISTIC_UUID,
+                        BLECharacteristic::PROPERTY_READ |
+                        BLECharacteristic::PROPERTY_WRITE
+                      );
+
+    pCharacteristic->setCallbacks(new MyCallbacks());
+    pService->start();
+
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    BLEDevice::startAdvertising();
+
+    updateDisplay("Ready!");
+    Serial.println("Setup Complete!");
 }
 
 void loop() {
-    // Nothing to do here
+    delay(100);
 }
