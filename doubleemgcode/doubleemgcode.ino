@@ -8,10 +8,6 @@
 
 bool overrideMode = false;
 
-
-
-
-
 // ==================== Number of EMG Sensors ====================
 #define NUM_SENSORS 2
 
@@ -99,8 +95,6 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
 
-
-
 void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incomingData, int len) {
     if (len == sizeof(struct_message)) {
         struct_message* msg = (struct_message*)incomingData;
@@ -132,7 +126,6 @@ void OnDataRecv(const esp_now_recv_info_t *esp_now_info, const uint8_t *incoming
         }
     }
 }
-
 
 void sendMessage(bool Vibrate, const char* message) {
     myData.command = 'm'; // 'm' for message
@@ -166,7 +159,6 @@ void sendVibrationCommand() {
         Serial.println("Error sending the vibration command");
     }
 }
-
 
 void setup() {
     analogSetPinAttenuation(SensorInputPins[0], ADC_11db);
@@ -235,10 +227,7 @@ void setup() {
         return;
     }
 
-
-
-
-        // ==================== Calibration ====================
+    // ==================== Calibration ====================
     Serial.println("Starting calibration...");
     sendMessage(false, "Starting calibration...");
     delay(1000);
@@ -247,8 +236,6 @@ void setup() {
 
     sendMessage(true, "calibration complete");
 
-
-
     Serial.println("Calibration complete.");
     delay(1000);
     sendMessage(true, "Calibration complete.");
@@ -256,10 +243,7 @@ void setup() {
 }
 
 void loop() {
-
-
-
-if (overrideMode) {
+    if (overrideMode) {
         // In override mode, only process ESP-NOW messages
         delay(10);
         return;
