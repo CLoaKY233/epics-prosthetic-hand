@@ -25,10 +25,7 @@ graph TD
     C -->|Display| G[OLED Screen]
     E -->|Control| H[Servo Motors/Actuators]
     
-    classDef sensors fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef processing fill:#bbf,stroke:#333,stroke-width:2px;
-    classDef controllers fill:#bfb,stroke:#333,stroke-width:2px;
-    classDef output fill:#fbb,stroke:#333,stroke-width:2px;
+    
     
     class A sensors;
     class B processing;
@@ -80,11 +77,7 @@ flowchart LR
     E --> I[Servo Motor 2]
     E --> J[Servo Motor 3]
     
-    style A fill:#f96,stroke:#333,stroke-width:2px
-    style B fill:#69f,stroke:#333,stroke-width:2px
-    style C fill:#9c6,stroke:#333,stroke-width:2px
-    style E fill:#9c6,stroke:#333,stroke-width:2px
-    style D fill:#c9f,stroke:#333,stroke-width:2px
+   
 ```
 
 ## Hardware Components
