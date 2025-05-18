@@ -1,10 +1,10 @@
 # EMG-Based Wearable Control System
 
-This project implements a wearable control system that processes electromyography (EMG) signals to control external devices through wireless communication. The system consists of EMG sensors, a signal processing module, and a microcontroller that communicates with actuators.
+This project implements a sophisticated wearable control system that processes electromyography (EMG) signals to control external devices through wireless communication. The system comprises EMG sensors, a signal processing module, and a microcontroller that communicates with actuators.
 
 ## System Overview
 
-The system uses ESP32 microcontrollers to process EMG sensor data and control actuators. It features:
+The system utilizes ESP32 microcontrollers to process EMG sensor data and control actuators. Key features include:
 
 - BLE connectivity for smartphone/tablet control
 - ESP-NOW wireless communication between microcontroller units
@@ -143,4 +143,3 @@ The system uses the following message types for ESP-NOW communication:
 - Adafruit_GFX library
 - Adafruit_SSD1306 library
 - BLE device libraries
-
